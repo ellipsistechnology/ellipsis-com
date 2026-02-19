@@ -2,7 +2,17 @@ import { SerialPort } from 'serialport';
 import { ComMacro } from './ComMacro';
 import { ComType } from './ComType';
 
-
+/**
+ * Represents a serial communication port. This class is responsible for managing the connection to the port, sending commands, and reading responses. It also
+ * maintains the state of the port (e.g. whether it is currently busy or available)
+ * and handles incoming data and errors.
+ * 
+ * The port will be busy while waiting for a response to a sent command, and will be available for new commands once the response is received or an error occurs. 
+ * While waiting for a new command, the port will be in the background state, allowing it to log incoming data without blocking. 
+ * If an error occurs while waiting for a response, the port will return to the background state and log the error.
+ * 
+ * Valid states: busy, closed, background, connecting.
+ */
 export class ComPort {
     private port: SerialPort | null = null;
     private readMatch?: RegExp;
@@ -16,7 +26,6 @@ export class ComPort {
     lastError: string | null = null;
     timeout: number = 5000; // TODO: Allow setting this at the service level and at the method level.
     lineEnding: string = '\n'; // TODO: Allow setting this at the service level and at the method level.
-
 
     // General port info:
     manufacturer?: string;
@@ -96,27 +105,28 @@ export class ComPort {
      * @returns The read data.
      */
     async read(match: RegExp): Promise<string> {
-        let time = Date.now();
-        this.readMatch = match;
-        this.buffer = '';
-        this.lastError = null;
-        this.readComplete = false;
+        let time = Date.now()
+        this.readMatch = match
+        this.buffer = ''
+        this.lastError = null
+        this.readComplete = false
+
         return new Promise<string>((resolve, reject) => {
             const checkCompletion = () => {
                 if (this.readComplete) {
-                    resolve(this.buffer.trim());
+                    resolve(this.buffer.trim())
                 } else if (Date.now() - time > this.timeout) {
-                    reject(new Error(`Timeout after ${this.timeout}ms while reading from port ${this.path}.`)); // TODO: Create custom timeout error class.
+                    reject(new Error(`Timeout after ${this.timeout}ms while reading from port ${this.path}.`)) // TODO: Create custom timeout error class.
                 } else if (this.lastError) {
-                    reject(new Error(this.lastError));
+                    reject(new Error(this.lastError))
                 } else {
                     setTimeout(() => {
-                        checkCompletion();
+                        checkCompletion()
                     }, 100);
                 }
             };
-            checkCompletion();
-        });
+            checkCompletion()
+        })
     }
 
     /**
@@ -163,9 +173,18 @@ export class ComPort {
         });
     }
 
-    async waitUntilAvailable(): Promise<void> {
+    /**
+     * Attempts to set the port state to busy.
+     * If the port is currently closed, it will attempt to connect. 
+     * If the port is currently connecting, it will wait until the connection is complete. 
+     * If the port is currently busy, it will wait until the port becomes available. 
+     * If the port does not become available within a certain time frame, an error will be thrown.
+     * @returns 
+     */
+    async lockPort(): Promise<void> {
         // Already available:
         if (this.state === 'background') {
+            this.state = 'busy'
             return;
         }
 
@@ -197,6 +216,8 @@ export class ComPort {
         if (this.state === 'busy') {
             throw new Error(`Timeout while waiting for port to become available.`);
         }
+
+        this.state = 'busy'
         console.log(`Port ${this.path} is now available.`);
     }
 
@@ -295,13 +316,13 @@ export class ComPort {
             });
         }
 
-        // Wait for port the become available:
-        await this.waitUntilAvailable();
-
         // Execute each macro in turn:
         const responses = [];
         for (let macro of macros) {
-            this.state = 'busy';
+            // Wait for port the become available:
+            await this.lockPort()
+
+            // Write the command and wait for the response:
             await this.write(macro.command);
             const response = await this.read(macro.response);
             responses.push(response);
@@ -366,14 +387,15 @@ export class ComPort {
         // Read until pattern matched:
         if (this.state === 'busy') {
             if (!this.readMatch) {
-                this.lastError = 'State was busy reading data but no read RegExp was found to check for completion.';
-                return;
+                this.lastError = 'State was busy reading data but no read RegExp was found to check for completion.'
+                this.state = 'background'
+                return
             }
-            this.buffer += data.toString();
+            this.buffer += data.toString()
 
             if (this.readMatch.test(this.buffer.toString().trim())) {
-                this.state = 'background';
-                this.readComplete = true;
+                this.state = 'background'
+                this.readComplete = true
             }
         }
         else {
