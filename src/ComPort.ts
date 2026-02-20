@@ -14,26 +14,27 @@ import { ComType } from './ComType';
  * Valid states: busy, closed, background, connecting.
  */
 export class ComPort {
-    private port: SerialPort | null = null;
-    private readMatch?: RegExp;
-    private readComplete = false;
-    private buffer: string = ''; // TODO replace with Buffer
+    private port: SerialPort | null = null
+    private readMatch?: RegExp
+    private readComplete = false
+    private buffer: string = '' // TODO replace with Buffer
 
     backgroundBuffer: string[] = [];
 
-    state: 'busy' | 'closed' | 'background' | 'connecting' = 'closed';
-    type: ComType | null = null;
-    lastError: string | null = null;
-    timeout: number = 5000; // TODO: Allow setting this at the service level and at the method level.
-    lineEnding: string = '\n'; // TODO: Allow setting this at the service level and at the method level.
+    name: string | null = null
+    state: 'busy' | 'closed' | 'background' | 'connecting' = 'closed'
+    type: ComType | null = null
+    lastError: string | null = null
+    timeout: number = 5000 // TODO: Allow setting this at the service level and at the method level.
+    lineEnding: string = '\n' // TODO: Allow setting this at the service level and at the method level.
 
     // General port info:
-    manufacturer?: string;
-    serialNumber?: string;
-    pnpId?: string;
-    locationId?: string;
-    productId?: string;
-    vendorId?: string;
+    manufacturer?: string
+    serialNumber?: string
+    pnpId?: string
+    locationId?: string
+    productId?: string
+    vendorId?: string
 
     constructor(public path: string) { }
 

@@ -44,11 +44,13 @@ export class SerialPort extends EventEmitter {
         callback(SerialPort.mockWriteResponse)
         SerialPort.mockWriteResponse = null; // reset after use
       }
-      
+
       if(SerialPort.nextResponse) {
         setTimeout(() => {
-            this.simulateData(SerialPort.nextResponse!)
-            SerialPort.nextResponse = null; // reset after use
+            if(SerialPort.nextResponse) {
+                this.simulateData(SerialPort.nextResponse)
+                SerialPort.nextResponse = null; // reset after use
+            }
         }, 0);
       }
     }, 0);
@@ -66,6 +68,9 @@ export class SerialPort extends EventEmitter {
 
   // Method to simulate receiving data
   simulateData(data: string | Buffer): void {
+    if(data === null) {
+        throw new Error('Data cannot be null')
+    }
     this.emit('data', Buffer.from(data));
   }
 

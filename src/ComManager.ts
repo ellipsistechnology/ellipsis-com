@@ -2,46 +2,70 @@ import { SerialPort } from 'serialport'
 import { ComType } from './ComType'
 import { ComPort } from './ComPort'
 
+/**
+ * Maintains a list of ports and types, and handles scanning for new ports and matching them to types.
+ */
 export class ComManager {
   ports: ComPort[] = []
   types: ComType[] = []
+  refreshInterval = 60000 // 60 seconds
+  defaultTimeout: number | undefined = undefined // assigned to ports on creation
   
-  private refreshInterval: NodeJS.Timeout | null = null
+  private refreshIntervalHandle: NodeJS.Timeout | null = null
 
-  constructor() {
-    setTimeout(() => {
-      this.init()
-    }, 1000)
-  }
+  constructor() {}
 
-  init() {
-    // this.loadTypes()
-    this.scanPorts()
-    .then(() => {
+  async init(types: ComType[] = []) {
+    this.types = types
+    
+    try {
+      await this.scanPorts()
       console.log("ComManager initialized.")
-      this.scheduleRefresh()
-    })
-    .catch((err) => {
+    } catch( err) {
       console.error("Error initializing ComManager: ", err)
       setTimeout(() => this.init(), 1000) // retry
-    })
+    }
+
+    this.scheduleRefresh()
   }
 
   private scheduleRefresh() {
-    if(this.refreshInterval) {
-      clearInterval(this.refreshInterval)
+    // Clear any current job:
+    if(this.refreshIntervalHandle) {
+      clearInterval(this.refreshIntervalHandle)
     }
-    this.refreshInterval = setInterval(() => {
-      this.scanPorts()
-      .catch((err) => {
+
+    // A negative interval disables refreshing:
+    if(this.refreshInterval < 0) {
+      console.log('ComManager auto-refresh disabled.')
+      return
+    }
+
+    // Schedule a new job:
+    this.refreshIntervalHandle = setTimeout(async () => {
+      console.log('Rescanning com ports...')
+      try {
+        this.scanPorts()
+      } catch(err) {
         console.error("Error scanning ports: ", err)
-      })
-    }, 60000) // every 60 seconds
+      } finally {
+        this.scheduleRefresh() // reschedule the next refresh
+      }
+    }, this.refreshInterval)
   }
 
-  // TODO: Allow access by ID instead of index - devices will need a name for this.
-  getComPort(typeName: string, index: number): ComPort {
+  getComPort(typeName: string, index_name: number | string): ComPort {
     const typePorts = this.ports.filter(p => p.type?.name === typeName)
+
+    if(typeof index_name === 'string') {
+      const port = typePorts.find(p => p.name === index_name)
+      if(!port) {
+        throw new Error(`Port with name ${index_name} not found for type ${typeName}.`)
+      }
+      return port
+    }
+
+    const index = index_name as number
 
     // Make sure the port exists and has a known type:
     if(index >= typePorts.length) {
@@ -83,6 +107,9 @@ export class ComManager {
 
           // Add new port:
           const port = new ComPort(p.path)
+          if(this.defaultTimeout) {
+            port.timeout = this.defaultTimeout
+          }
 
           port.path = p.path
           port.manufacturer = p.manufacturer
@@ -215,8 +242,8 @@ export class ComManager {
     return results
   }
 
-  async send(type: string, index: number, operationId: string, params: {[key: string]: any}): Promise<string[]> {
-    const port = await this.getComPort(type, index)
+  async send(type: string, index_name: number|string, operationId: string, params?: {[key: string]: any}): Promise<string[]> {
+    const port = this.getComPort(type, index_name)
     const responses = await port.send(operationId, params)
     return responses
   }
