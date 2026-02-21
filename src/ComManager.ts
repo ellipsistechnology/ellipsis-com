@@ -139,11 +139,12 @@ export class ComManager {
               break
             } catch(err) {
               console.log(`Failed to add type to port: ${port.toString()}`)
+              console.error(err)
               continue
             }
           }
         }))
-        console.log(`Com ports: \n\\t${this.ports.map(p => p.toString()).join(',\n\\t')}`);
+        console.log(`Com ports: \n\t${this.ports.map(p => p.toString()).join(',\n\t')}`);
     } catch (error: any) {
         console.error(`Error scanning serial ports: ${error.message}`)
     }

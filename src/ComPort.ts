@@ -45,6 +45,7 @@ export class ComPort {
     async setType(type: ComType): Promise<boolean> {
         try {
             await this.connect(type.baud); // throws an error if connection fails
+            await sleep(type.startupDelay); // wait for device to startup if needed
             await this.send(type.macros.init);
             if (this.readComplete) {
                 this.type = type;
@@ -393,7 +394,6 @@ export class ComPort {
                 return
             }
             this.buffer += data.toString()
-
             if (this.readMatch.test(this.buffer.toString().trim())) {
                 this.state = 'background'
                 this.readComplete = true
@@ -404,3 +404,8 @@ export class ComPort {
         }
     }
 }
+
+async function sleep(startupDelay: number) {
+    return new Promise<void>(resolve => setTimeout(() => resolve(), startupDelay));
+}
+

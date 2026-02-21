@@ -9,6 +9,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "demo": "ts-node src/test/Demo.ts",
     "clean": "rm -rf dist",
     "prebuild": "npm run clean"
   },
@@ -18,10 +19,11 @@
     "serialport": "^13.0.0"
   },
   "devDependencies": {
-    "@types/node": "^25.2.3",
     "@types/jest": "^29.5.12",
+    "@types/node": "^25.2.3",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }
 }
