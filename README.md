@@ -31,6 +31,9 @@ npm test
 import { ComManager } from '../ComManager'
 import { ComMacro } from '../ComMacro'
 
+/**
+ * This demo works with the arduino-demo sketch.
+ */
 async function demo() {
     const manager = new ComManager()
 
@@ -41,9 +44,10 @@ async function demo() {
         [{
             name: 'myType',
             baud: 9600,
+            startupDelay: 2000, // optional delay to wait for device to startup after connecting and before sending init
             macros: {
                 // Command to initialise and identify type - must have key 'init':
-                init: [new ComMacro('INFO', /MOCK\sDEVICE\sV\d+.?\d*\nSTATUS: OK\nCMD DONE$/gm)], // regex to identify device as being of myType
+                init: [new ComMacro('INFO', /MOCK\sDEVICE\sV\d+.?\d*[\n\r]+STATUS: OK[\n\r]+CMD DONE$/gm)], // regex to identify device as being of myType
 
                 // Basic command and response pattern - can be named anything:
                 getData: [new ComMacro('GET DATA', /CMD DONE$/gm)],
@@ -62,17 +66,17 @@ async function demo() {
 
     // Send the getData command to the first port of type 'myType':
     let data = await manager.send('myType', 0, 'getData')
-    console.log('Received data:', data)
+    console.log('\nGet data response - ', data[0], '\n') // data is an array of responses matching the regex for the macro
 
     // Send the setData command with a parameter:
     await manager.send('myType', 0, 'setData', {val: 'abc123'})
     data = await manager.send('myType', 0, 'getData')
-    console.log('Data changed to:', data)
+    console.log('\nData changed - ', data[0], '\n')
 
     // Delete the data using the deleteData command which has a sequence of commands and responses:
     await manager.send('myType', 0, 'deleteData')
     data = await manager.send('myType', 0, 'getData')
-    console.log('Data after deletion:', data)
+    console.log('\nAfter deletion - ', data[0], '\n')
 }
 
 demo()

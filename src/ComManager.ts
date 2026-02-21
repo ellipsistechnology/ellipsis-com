@@ -2,6 +2,17 @@ import { SerialPort } from 'serialport'
 import { ComType } from './ComType'
 import { ComPort } from './ComPort'
 
+// TODO: Adopt a propper logging system.
+let debug: (...args: any[]) => void
+export function enableDebug(enable = true) {
+    if (enable) {
+        debug = console.log;
+    } else {
+        debug = () => { };
+    }
+}
+enableDebug(false)
+
 /**
  * Maintains a list of ports and types, and handles scanning for new ports and matching them to types.
  */
@@ -20,7 +31,7 @@ export class ComManager {
     
     try {
       await this.scanPorts()
-      console.log("ComManager initialized.")
+      debug("ComManager initialized.")
     } catch( err) {
       console.error("Error initializing ComManager: ", err)
       setTimeout(() => this.init(), 1000) // retry
@@ -37,13 +48,13 @@ export class ComManager {
 
     // A negative interval disables refreshing:
     if(this.refreshInterval < 0) {
-      console.log('ComManager auto-refresh disabled.')
+      debug('ComManager auto-refresh disabled.')
       return
     }
 
     // Schedule a new job:
     this.refreshIntervalHandle = setTimeout(async () => {
-      console.log('Rescanning com ports...')
+      debug('Rescanning com ports...')
       try {
         this.scanPorts()
       } catch(err) {
@@ -76,7 +87,7 @@ export class ComManager {
   }
 
   async scanPorts(): Promise<void> {
-    console.log(`Scanning serial ports...`)
+    debug(`Scanning serial ports...`)
     try {
         const ports = await SerialPort.list()
         await Promise.all(ports.map(async p => {
@@ -84,11 +95,11 @@ export class ComManager {
           const existingPort = this.ports.find(existing => existing.path === p.path)
           if(existingPort && existingPort.type) {
             try {
-              console.log(`Sending hello message to port ${existingPort.path} of type ${existingPort.type?.name}...`);
+              debug(`Sending hello message to port ${existingPort.path} of type ${existingPort.type?.name}...`);
               await existingPort.send('init')
-              console.log(`Response received from port ${existingPort.path}.`);
+              debug(`Response received from port ${existingPort.path}.`);
             } catch(err) {
-              console.log(`Port ${existingPort.path} of type ${existingPort.type?.name} is not responding.`)
+              debug(`Port ${existingPort.path} of type ${existingPort.type?.name} is not responding.`)
               
               // Close the port if open:
               if(existingPort.state !== 'closed') {
@@ -101,7 +112,7 @@ export class ComManager {
 
           // Remove existing ports of unknown type so that we can try again:
           if(existingPort && !existingPort.type) {
-            console.log(`Removing existing port ${existingPort.path} of unknown type for re-detection.`)
+            debug(`Removing existing port ${existingPort.path} of unknown type for re-detection.`)
             this.ports = this.ports.filter(p => p.path !== existingPort.path)
           }
 
@@ -131,20 +142,20 @@ export class ComManager {
               
               // If the type was set without error, then the port
               // supports this type:
-              console.log(`Com port of type ${type.name} found at path ${port.path}`)
+              debug(`Com port of type ${type.name} found at path ${port.path}`)
 
               // Open the port for background use:
               await port.connect()
 
               break
             } catch(err) {
-              console.log(`Failed to add type to port: ${port.toString()}`)
+              debug(`Failed to add type to port: ${port.toString()}`)
               console.error(err)
               continue
             }
           }
         }))
-        console.log(`Com ports: \n\t${this.ports.map(p => p.toString()).join(',\n\t')}`);
+        debug(`Com ports: \n\t${this.ports.map(p => p.toString()).join(',\n\t')}`);
     } catch (error: any) {
         console.error(`Error scanning serial ports: ${error.message}`)
     }
@@ -157,7 +168,7 @@ export class ComManager {
    */
 //   loadTypes() {
 //     if(!this.openapiDoc['x-bb-com-types']) {
-//       console.log("No com types found in OpenAPI document.")
+//       debug("No com types found in OpenAPI document.")
 //       return
 //     }
 
@@ -230,7 +241,7 @@ export class ComManager {
 //         comType.baud,
 //         macros as {[method: string]: ComMacro[], init: ComMacro[]}
 //       ))
-//       console.log(`Loaded com type ${comType.toString()}`);
+//       debug(`Loaded com type ${comType.toString()}`);
 //     })
 //   }
 
