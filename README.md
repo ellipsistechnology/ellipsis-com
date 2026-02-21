@@ -28,8 +28,8 @@ npm test
 ## Basic usage
 
 ```ts
-import { ComManager } from '../ComManager'
-import { ComMacro } from '../ComMacro'
+import { ComManager } from 'ellipsis-com'
+import { ComMacro } from 'ellipsis-com'
 
 /**
  * This demo works with the arduino-demo sketch.

@@ -1,9 +1,13 @@
 {
   "name": "ellipsis-com",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "For the management of serial communication based on commands and responses defined by regular expressions.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ellipsistechnology/ellipsis-com.git"
+  },
   "scripts": {
     "build": "tsc",
     "test": "jest",
