@@ -39,9 +39,10 @@ export declare class ComPort {
      * set in the ComPort's type. Once successfully open the port will be in
      * the background state and may be used to write and read.
      * @param baud The Baud rate.
+     * @param startupDelay Optional delay in milliseconds to wait after opening before resolving.
      * @returns A Promise.
      */
-    connect(baud?: number): Promise<void>;
+    connect(baud?: number, startupDelay?: number): Promise<void>;
     /**
      * Read from the serial port until either the given pattern is
      * matched in the read data or the ComPort's timeout is reached.

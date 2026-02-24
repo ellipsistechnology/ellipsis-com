@@ -15,11 +15,6 @@ export declare class ComManager {
     private scheduleRefresh;
     getComPort(typeName: string, index_name: number | string): ComPort;
     scanPorts(): Promise<void>;
-    /**
-     * Load the com types from the OpenAPI document.
-     * TODO: This method needs to be moved into the bb-com-extension.
-     * @returns
-     */
     list(type: string, operationId: string, params: {
         [key: string]: any;
     }): Promise<string[][]>;

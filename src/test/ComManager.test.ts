@@ -34,14 +34,14 @@ const MOCK_PORTS = [
   }
 ]
 
-const mockType: ComType = {
-    name: 'mock',
-    baud: 9600,
-    macros: {
+const mockType: ComType = new ComType(
+    'mock',
+    9600,
+    {
         init: [new ComMacro('init', /INITTED/)],
         help: [new ComMacro('help', /SOME INSTRUCTIONS/)]
     }
-}
+)
 
 const sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms))

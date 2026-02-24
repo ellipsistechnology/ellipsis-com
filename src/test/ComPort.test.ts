@@ -1,6 +1,7 @@
 import { ComMacro } from "../ComMacro"
 import { ComPort } from "../ComPort"
 import { SerialPort } from "serialport"
+import { ComType } from "../ComType"
 
 const sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms))
@@ -43,13 +44,13 @@ describe('ComPort', () => {
         })
 
         it('should open on setting type', async () => {
-            const setTypePromise = comPort.setType({
-                name: 'serialportMock',
-                baud: 9600,
-                macros: {
+            const setTypePromise = comPort.setType(new ComType(
+                'serialportMock',
+                9600,
+                {
                     init: [new ComMacro('init', /INITTED/)]
                 }
-            })
+            ))
             expect(comPort.state).toBe('connecting');
             (SerialPort as any).setNextResponse('INITTED') // simulate response from device
             await Promise.resolve(setTypePromise) // wait for setType to complete
@@ -83,14 +84,14 @@ describe('ComPort', () => {
         it('should send a macro base on the operationId', async () => {
             
             (SerialPort as any).setNextResponse('INITTED') // simulate response from device
-            await comPort.setType({
-                name: 'serialportMock',
-                baud: 9600,
-                macros: {
+            await comPort.setType(new ComType(
+                'serialportMock',
+                9600,
+                {
                     init: [new ComMacro('INIT', /INITTED/)],
                     help: [new ComMacro('HELP', /SOME INSTRUCTIONS/)]
                 }
-            })
+            ))
             expect(comPort.type).toBeDefined();
             
             (SerialPort as any).setNextResponse('SOME INSTRUCTIONS') // simulate response from device

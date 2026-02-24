@@ -45,8 +45,7 @@ class ComPort {
     }
     async setType(type) {
         try {
-            await this.connect(type.baud); // throws an error if connection fails
-            await sleep(type.startupDelay); // wait for device to startup if needed
+            await this.connect(type.baud, type.startupDelay); // throws an error if connection fails
             await this.send(type.macros.init);
             if (this.readComplete) {
                 this.type = type;
@@ -65,9 +64,10 @@ class ComPort {
      * set in the ComPort's type. Once successfully open the port will be in
      * the background state and may be used to write and read.
      * @param baud The Baud rate.
+     * @param startupDelay Optional delay in milliseconds to wait after opening before resolving.
      * @returns A Promise.
      */
-    async connect(baud) {
+    async connect(baud, startupDelay) {
         if (!baud && !this.type) {
             throw new Error('No baud rate set while trying to connect. Either pass the baud rate to the connect function or set a ComType first.');
         }
@@ -90,11 +90,19 @@ class ComPort {
                     reject(err);
                     return;
                 }
-                // this.resetResponse()
                 // Successfully opened:
                 debug(`Connected to com port ${this.path}.`);
-                this.state = 'background';
-                resolve();
+                const delay = startupDelay ?? this.type?.startupDelay;
+                if (delay) {
+                    setTimeout(() => {
+                        this.state = 'background';
+                        resolve();
+                    }, delay); // wait for device to startup if needed
+                }
+                else {
+                    this.state = 'background';
+                    resolve();
+                }
             });
         });
     }
@@ -192,9 +200,10 @@ class ComPort {
             await this.connect();
         }
         // If currently connecting, first wait until connected:
+        const MAX_ATTEMPTS = 10;
         let attempt = 0;
-        while (this.state === 'connecting' && attempt < 10) {
-            await new Promise(resolve => setTimeout(() => resolve(), 100));
+        while (this.state === 'connecting' && attempt < MAX_ATTEMPTS) {
+            await new Promise(resolve => setTimeout(() => resolve(), this.timeout / MAX_ATTEMPTS));
             attempt++;
         }
         if (this.state === 'connecting') {
@@ -202,11 +211,10 @@ class ComPort {
         }
         debug(`Port ${this.path} connected.`);
         // If busy, wait until available:
-        const MAX_ATTEMPTS = 10;
         attempt = 0;
         while (this.state === 'busy' && attempt < MAX_ATTEMPTS) {
             debug(`Port ${this.path} is busy - waiting...`);
-            await new Promise(resolve => setTimeout(() => resolve(), 500));
+            await new Promise(resolve => setTimeout(() => resolve(), this.timeout / MAX_ATTEMPTS));
             attempt++;
         }
         if (this.state === 'busy') {
@@ -285,11 +293,25 @@ class ComPort {
         const responses = [];
         for (let macro of macros) {
             // Wait for port the become available:
-            await this.lockPort();
+            try {
+                await this.lockPort();
+            }
+            catch (err) {
+                debug(`Error while waiting for port ${this.path} to become available for command '${macro.command}': ${err?.message || err}`);
+                this.state = 'background'; // Return to background state to allow logging of incoming data and future requests.
+                throw err;
+            }
             // Write the command and wait for the response:
-            await this.write(macro.command);
-            const response = await this.read(macro.response);
-            responses.push(response);
+            try {
+                await this.write(macro.command);
+                const response = await this.read(macro.response);
+                responses.push(response);
+            }
+            catch (err) {
+                debug(`Error while sending command '${macro.command}' to port ${this.path}: ${err?.message || err}`);
+                this.state = 'background'; // Return to background state to allow logging of incoming data and future requests.
+                throw err;
+            }
         }
         return responses;
     }
@@ -348,7 +370,9 @@ class ComPort {
                 return;
             }
             this.buffer += data.toString();
-            if (this.readMatch.test(this.buffer.toString().trim())) {
+            this.readMatch.lastIndex = 0;
+            const matches = this.readMatch.test(this.buffer.toString().trim());
+            if (matches) {
                 this.state = 'background';
                 this.readComplete = true;
             }
