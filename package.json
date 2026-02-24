@@ -1,6 +1,6 @@
 {
   "name": "ellipsis-com",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "For the management of serial communication based on commands and responses defined by regular expressions.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
