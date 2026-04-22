@@ -1,6 +1,15 @@
 import { ComMacro } from './ComMacro';
 import { ComType } from './ComType';
 export declare function enableDebug(enable?: boolean): void;
+interface LongRunningCommand {
+    id: string;
+    status: 'running' | 'completed' | 'error';
+    responses: string[];
+    error?: string;
+    cacheTimeout?: number;
+    createdTime: number;
+    path?: string;
+}
 /**
  * Represents a serial communication port. This class is responsible for managing the connection to the port, sending commands, and reading responses. It also
  * maintains the state of the port (e.g. whether it is currently busy or available)
@@ -18,6 +27,9 @@ export declare class ComPort {
     private readMatch?;
     private readComplete;
     private buffer;
+    private readTime;
+    longRunningCommand?: LongRunningCommand;
+    private longRunningCommandCache;
     backgroundBuffer: string[];
     name: string | null;
     state: 'busy' | 'closed' | 'background' | 'connecting';
@@ -91,7 +103,15 @@ export declare class ComPort {
     send(macros: ComMacro[], params?: {
         [name: string]: any;
     }): Promise<string[]>;
+    startLongRunning({ id, cacheTimeout, path }: {
+        id: string;
+        cacheTimeout?: number;
+        path?: string;
+    }, macros_operationId: ComMacro[] | string, params?: {
+        [name: string]: any;
+    }): LongRunningCommand;
     receiveError(err: Error): void;
     receiveData(data: Buffer): void;
 }
+export {};
 //# sourceMappingURL=ComPort.d.ts.map

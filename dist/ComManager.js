@@ -83,9 +83,13 @@ class ComManager {
         try {
             const ports = await serialport_1.SerialPort.list();
             await Promise.all(ports.map(async (p) => {
-                // Send hello message to existing ports:
                 const existingPort = this.ports.find(existing => existing.path === p.path);
                 if (existingPort && existingPort.type) {
+                    // Ignore ports that have ongoing long running commands:
+                    if (existingPort.longRunningCommand?.status === 'running') {
+                        return;
+                    }
+                    // Send hello message to existing ports:
                     try {
                         debug(`Sending hello message to port ${existingPort.path} of type ${existingPort.type?.name}...`);
                         await existingPort.send('init');

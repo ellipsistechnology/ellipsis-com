@@ -1,6 +1,7 @@
 import { SerialPort } from 'serialport';
 import { ComMacro } from './ComMacro';
 import { ComType } from './ComType';
+import fs from 'fs';
 
 // TODO: Adopt a propper logging system.
 let debug: (...args: any[]) => void
@@ -11,7 +12,17 @@ export function enableDebug(enable = true) {
         debug = () => { };
     }
 }
-enableDebug(false)
+enableDebug(true)
+
+interface LongRunningCommand {
+    id: string
+    status: 'running' | 'completed' | 'error'
+    responses: string[]
+    error?: string
+    cacheTimeout?: number
+    createdTime: number
+    path?: string
+}
 
 /**
  * Represents a serial communication port. This class is responsible for managing the connection to the port, sending commands, and reading responses. It also
@@ -29,6 +40,11 @@ export class ComPort {
     private readMatch?: RegExp
     private readComplete = false
     private buffer: string = '' // TODO replace with Buffer
+
+    private readTime: number = 0
+
+    public longRunningCommand?: LongRunningCommand
+    private longRunningCommandCache: { [id: string]: LongRunningCommand } = {}
 
     backgroundBuffer: string[] = [];
 
@@ -126,7 +142,7 @@ export class ComPort {
      * @returns The read data.
      */
     async read(match: RegExp): Promise<string> {
-        let time = Date.now()
+        this.readTime = Date.now()
         this.readMatch = match
         this.buffer = ''
         this.lastError = null
@@ -136,7 +152,7 @@ export class ComPort {
             const checkCompletion = () => {
                 if (this.readComplete) {
                     resolve(this.buffer.trim())
-                } else if (Date.now() - time > this.timeout) {
+                } else if (Date.now() - this.readTime > this.timeout) {
                     reject(new Error(`Timeout after ${this.timeout}ms while reading from port ${this.path}.`)) // TODO: Create custom timeout error class.
                 } else if (this.lastError) {
                     reject(new Error(this.lastError))
@@ -179,6 +195,15 @@ export class ComPort {
      * @returns A Promise.
      */
     async close() {
+        if (!this.port) {
+            this.state = 'closed';
+            return;
+        }
+        if(this.port.closed) {
+            this.port = null;
+            this.state = 'closed';
+            return;
+        }
         return new Promise<void>((resolve, reject) => {
             this.port?.close((err) => {
                 if (!this.port!.isOpen) {
@@ -364,6 +389,112 @@ export class ComPort {
         return responses;
     }
 
+    startLongRunning(
+        {id, cacheTimeout, path}: {id: string, cacheTimeout?: number, path?: string}, 
+        macros_operationId: ComMacro[] | string, 
+        params?: { [name: string]: any; }
+    ): LongRunningCommand {
+        // If already running, return existing command with updated response:
+        if(this.longRunningCommand) {
+            if(this.longRunningCommand.id === id) {
+                // Still running:
+                if(this.longRunningCommand.status === 'running') {
+                    this.longRunningCommand.responses = [this.buffer.toString()]
+                    return this.longRunningCommand
+                }
+
+                // Completed or error:
+                const command = this.longRunningCommand
+                delete this.longRunningCommand
+                return command   
+            } else {
+                if(this.longRunningCommand.status === 'running') {
+                    throw new Error(`Cannot start long running command with id '${id}' on port ${this.path} because another long running command with id '${this.longRunningCommand.id}' is already running.`)
+                } else {
+                    debug(`Starting new long running command with id '${id}' on port ${this.path} while another command with id '${this.longRunningCommand.id}' is in status '${this.longRunningCommand.status}'. Overwriting previous command.`)
+                }
+            }
+        }
+
+        // Check cache:
+        if(this.longRunningCommandCache[id]) {
+            const cachedCommand = this.longRunningCommandCache[id]
+            if(cachedCommand.cacheTimeout && Date.now() - cachedCommand.createdTime < cachedCommand.cacheTimeout) {
+                debug(`Returning cached response for long running command ${id} on port ${this.path}. Cache timeout in ${cachedCommand.cacheTimeout! - (Date.now() - cachedCommand.createdTime)}ms.`)
+                return cachedCommand
+            } else {
+                debug(`Cache expired for long running command ${id} on port ${this.path}. Removing from cache.`)
+                delete this.longRunningCommandCache[id]
+            }
+        }
+
+        // Check file:
+        if(path && fs.existsSync(path)) {
+            try {
+                const fileData = fs.readFileSync(path, 'utf-8')
+                const responsesFromFile = JSON.parse(fileData) as string[]
+                debug(`Returning response from file for long running command ${id} on port ${this.path}.`)
+                return {
+                    id,
+                    status: 'completed',
+                    responses: responsesFromFile,
+                    path,
+                    createdTime: Date.now()
+                }
+            } catch (err) {
+                debug(`No valid cached file found at ${path} for long running command ${id} on port ${this.path}. Error: ${(err as any)?.message || err}`)
+            }
+        }
+
+        // Create new command for tracking:
+        this.longRunningCommand = {
+            id,
+            status: 'running',
+            responses: [] as string[],
+            cacheTimeout,
+            path,
+            createdTime: Date.now()
+        }
+        
+        // Asynchronously execute the command:
+        this.send(macros_operationId as string, params).then(response => {
+            if(!this.longRunningCommand) {
+                console.error(`Received response for long running command after completion: ${response}`)
+                return
+            }
+
+            // Update the command with the response and mark as completed:
+            this.longRunningCommand.status = 'completed'
+            this.longRunningCommand.responses = response
+
+            // If path, save to file:
+            if(this.longRunningCommand.path) {
+                fs.promises.writeFile(this.longRunningCommand.path, JSON.stringify(response, null, 2))
+                .then(() => debug(`Long running command ${this.longRunningCommand!.id} response saved to ${this.longRunningCommand!.path}`))
+                .catch(err => console.error(`Error saving long running command ${this.longRunningCommand!.id} response to ${this.longRunningCommand!.path}: ${(err as any)?.message || err}`))
+            } 
+            // Otherwise cache the response:
+            else {
+                this.longRunningCommandCache[this.longRunningCommand.id] = this.longRunningCommand
+            }
+
+            debug(`Long running command ${this.longRunningCommand.id} completed with response: ${response}`)
+        }).catch(err => {
+            if(!this.longRunningCommand) {
+                console.error(`Received response for long running command after completion with error. Error: ${(err as any)?.message || err}`)
+                return
+            }
+
+            // Update the command with the error and mark as completed:
+            this.longRunningCommand.status = 'error'
+            this.longRunningCommand.error = (err as any)?.message || String(err)
+            this.longRunningCommand.responses = [this.buffer.toString()]
+            debug(`Long running command ${this.longRunningCommand.id} failed with error: ${(err as any)?.message || err}`)
+        })
+
+        return this.longRunningCommand
+    }
+
     receiveError(err: Error) {
         console.error(`Error on port ${this.path}: ${err.message}`);
         this.lastError = err.message;
@@ -424,15 +555,20 @@ export class ComPort {
                 this.state = 'background'
                 return
             }
+
+            // If long running query, reset timeout:
+            if(this.longRunningCommand) {
+                this.readTime = Date.now()
+            }
+
             this.buffer += data.toString()
             this.readMatch.lastIndex = 0
-            const matches = this.readMatch.test(this.buffer.toString().trim())
+            const matches = this.readMatch.test(this.buffer.slice(-1000).trim()) // check only the last 1k characters to avoid performance issues with large buffers.
             if (matches) {
                 this.state = 'background'
                 this.readComplete = true
             }
-        }
-        else {
+        } else {
             console.error(`Port ${this.path} received data in unexpected state '${this.state}': ${data.toString()}`);
         }
     }
